@@ -115,8 +115,6 @@ io.github.l2terrain/
 
 - Splatmap extraction (terrain texture blending)
 - Texture layer extraction
-- Additional output formats (EXR, TIFF)
-- GUI viewer
 
 ## 🤝 Contributing
 
