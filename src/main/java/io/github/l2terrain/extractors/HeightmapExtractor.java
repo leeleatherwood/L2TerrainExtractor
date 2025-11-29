@@ -16,15 +16,13 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-
 /**
  * Extractor for G16 heightmap textures from Lineage 2 .utx packages.
  * 
  * <p>G16 is a raw 16-bit grayscale format used for terrain heightmaps.
  * Uses unreal-package-lib for proper package parsing.</p>
  */
-public class HeightmapExtractor implements Extractor {
+public class HeightmapExtractor {
     
     /** Marker pattern that precedes G16 data: 00 40 80 10 */
     private static final byte[] G16_MARKER = {0x00, 0x40, (byte) 0x80, 0x10};
@@ -35,23 +33,13 @@ public class HeightmapExtractor implements Extractor {
     /** Expected G16 data size: 256 * 256 * 2 bytes */
     private static final int EXPECTED_DATA_SIZE = TILE_SIZE * TILE_SIZE * 2;
     
-    @Override
-    public String getName() {
-        return "Heightmap (G16)";
-    }
-    
-    @Override
-    public List<String> getFilePatterns() {
-        return List.of("t_*_*.utx", "T_*_*.utx");
-    }
-    
-    @Override
-    public boolean canHandle(Path file) {
-        String name = file.getFileName().toString().toLowerCase();
-        return name.matches("t_\\d+_\\d+(_tx)?\\.utx");
-    }
-    
-    @Override
+    /**
+     * Extract heightmap from a terrain package file.
+     * 
+     * @param file the T_XX_YY.utx file to extract from
+     * @return the extracted terrain tile with height data
+     * @throws IOException if extraction fails
+     */
     public TerrainTile extract(Path file) throws IOException {
         String filename = file.getFileName().toString();
         
