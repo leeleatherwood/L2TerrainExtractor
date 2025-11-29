@@ -6,6 +6,7 @@ import io.github.l2terrain.extractors.MetadataExtractor;
 import io.github.l2terrain.extractors.MetadataExtractor.TileMetadata;
 import io.github.l2terrain.extractors.SplatmapExtractor;
 import io.github.l2terrain.extractors.SplatmapExtractor.SplatmapInfo;
+import io.github.l2terrain.extractors.StaticMeshExtractor;
 import io.github.l2terrain.extractors.TerrainTextureExtractor;
 import io.github.l2terrain.extractors.TerrainTextureExtractor.TextureInfo;
 import io.github.l2terrain.model.TerrainTile;
@@ -68,6 +69,9 @@ public class L2TerrainExtractor implements Callable<Integer> {
     @Option(names = {"--no-splatmaps"}, description = "Skip splatmap extraction")
     private boolean skipSplatmaps = false;
     
+    @Option(names = {"--static-meshes"}, description = "Extract static mesh placements to staticmeshes.json")
+    private boolean extractStaticMeshes = false;
+    
     public static void main(String[] args) {
         int exitCode = new CommandLine(new L2TerrainExtractor()).execute(args);
         System.exit(exitCode);
@@ -123,6 +127,18 @@ public class L2TerrainExtractor implements Callable<Integer> {
             int[] texResults = extractTerrainTextures();
             totalSuccess += texResults[0];
             totalFailed += texResults[1];
+        }
+        
+        // Extract static meshes if requested (requires maps directory)
+        if (extractStaticMeshes) {
+            if (mapsDir == null) {
+                System.err.println("\nWarning: --static-meshes requires --maps to be specified");
+            } else {
+                System.out.println("\n=== Extracting Static Meshes ===");
+                int[] meshResults = extractStaticMeshes();
+                totalSuccess += meshResults[0];
+                totalFailed += meshResults[1];
+            }
         }
         
         System.out.printf("\nTotal: %d items extracted (%d failed)%n", totalSuccess, totalFailed);
@@ -354,6 +370,20 @@ public class L2TerrainExtractor implements Callable<Integer> {
             System.out.printf("Extracted %d terrain textures (%d failed)%n", success, failed);
         }
         return new int[]{success, failed};
+    }
+    
+    private int[] extractStaticMeshes() throws IOException {
+        if (!Files.isDirectory(mapsDir)) {
+            System.err.println("Error: Maps directory does not exist: " + mapsDir);
+            return new int[]{0, 0};
+        }
+        
+        StaticMeshExtractor extractor = new StaticMeshExtractor();
+        extractor.setVerbose(verbose);
+        
+        int tilesProcessed = extractor.extractAll(mapsDir, outputDir);
+        
+        return new int[]{tilesProcessed, 0};
     }
     
     /**

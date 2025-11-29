@@ -4,6 +4,7 @@ import io.github.l2terrain.crypto.L2Decryptor;
 import net.shrimpworks.unreal.packages.Package;
 import net.shrimpworks.unreal.packages.PackageReader;
 import net.shrimpworks.unreal.packages.entities.Import;
+import net.shrimpworks.unreal.packages.entities.Named;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,8 +31,12 @@ public class ImportLister {
                 System.out.println("Imports (" + pkg.imports.length + " total):");
                 for (int i = 0; i < pkg.imports.length; i++) {
                     Import imp = pkg.imports[i];
-                    String line = String.format("  [-%d] %s (%s from %s)", 
-                        i + 1, imp.name.name, imp.className.name, imp.classPackage.name);
+                    
+                    // Build the full package path by following parent references
+                    String fullPath = buildPackagePath(imp);
+                    
+                    String line = String.format("  [-%d] %s (%s) -> %s", 
+                        i + 1, imp.name.name, imp.className.name, fullPath);
                     
                     if (filter == null || line.toLowerCase().contains(filter)) {
                         System.out.println(line);
@@ -41,5 +46,28 @@ public class ImportLister {
         } finally {
             Files.deleteIfExists(tempFile);
         }
+    }
+    
+    /**
+     * Build the full package path by following parent references.
+     */
+    private static String buildPackagePath(Import imp) {
+        StringBuilder path = new StringBuilder();
+        Named parent = imp.packageIndex.get();
+        
+        while (parent != null) {
+            if (path.length() > 0) {
+                path.insert(0, ".");
+            }
+            path.insert(0, parent.name().name);
+            
+            if (parent instanceof Import parentImp) {
+                parent = parentImp.packageIndex.get();
+            } else {
+                break;
+            }
+        }
+        
+        return path.length() > 0 ? path.toString() : "(none)";
     }
 }

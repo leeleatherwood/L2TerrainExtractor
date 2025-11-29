@@ -13,6 +13,7 @@ Extract complete terrain data from encrypted Lineage 2 `.utx` and `.unr` package
 ## Features
 
 - **Complete Terrain Extraction** - Heightmaps, splatmaps, detail maps, terrain textures, and metadata
+- **Static Mesh Placements** - Extract all static mesh actor positions, rotations, and scales per tile
 - **Automatic Decryption** - Handles Lineage 2 Ver 111 and Ver 121+ XOR encryption
 - **Smart Tile Detection** - Automatically finds G16 heightmap data using marker pattern detection
 - **Layer-Preserving Splatmaps** - Exports blend maps with original layer numbering for accurate terrain reconstruction
@@ -72,12 +73,20 @@ java -jar l2terrain-1.0.0-all.jar "C:\L2\textures" -o heightmaps --no-splatmaps
 java -jar l2terrain-1.0.0-all.jar "C:\L2\textures" -o output
 ```
 
+**Static mesh placements:**
+```bash
+java -jar l2terrain-1.0.0-all.jar "C:\L2\textures" -o output \
+    --maps="C:\L2\maps" \
+    --static-meshes
+```
+
 ## CLI Options
 
 ```
 Usage: l2terrain [-hvV] [--all-terrain-textures] [--no-splatmaps]
-                 [--terrain-textures] [--detail-maps=<detailMapsDir>]
-                 [--maps=<mapsDir>] [-o=<outputDir>] [-p=<pattern>] <inputDir>
+                 [--static-meshes] [--terrain-textures]
+                 [--detail-maps=<detailMapsDir>] [--maps=<mapsDir>]
+                 [-o=<outputDir>] [-p=<pattern>] <inputDir>
 
 Extract terrain data from Lineage 2 packages (heightmaps, splatmaps, detail maps, metadata)
 
@@ -92,6 +101,7 @@ Options:
       --no-splatmaps         Skip splatmap extraction
   -o, --output=<dir>         Output directory (default: current directory)
   -p, --pattern=<pattern>    File pattern to match (default: t_*_*.utx)
+      --static-meshes        Extract static mesh placements to staticmeshes.json
       --terrain-textures     Extract terrain tiling textures to terraintextures/ folder
   -v, --verbose              Verbose output
   -V, --version              Print version information and exit
@@ -116,8 +126,9 @@ output/
 │   ├── DI_G.png
 │   ├── GI_S.png
 │   └── ...
-└── XX_YY/                   # Per-tile metadata directories
-    └── metadata.json
+└── XX_YY/                   # Per-tile directories
+    ├── metadata.json        # Terrain layer configuration
+    └── staticmeshes.json    # Static mesh placements (if --static-meshes)
 ```
 
 ## Metadata Format
@@ -150,6 +161,43 @@ Each tile's `metadata.json` contains:
 }
 ```
 
+## Static Meshes Format
+
+When using `--static-meshes`, each tile gets a `staticmeshes.json`:
+
+```json
+{
+  "tile": "22_22",
+  "count": 1936,
+  "staticMeshes": [
+    {
+      "name": "StaticMeshActor64",
+      "mesh": "Giran_V_Plaza_Wall04",
+      "package": "Giran_Village_S",
+      "meshPath": "Giran_Village_S.Giran_V_Plaza_Wall04",
+      "location": {"x": 80662.0, "y": 148618.0, "z": -3387.0},
+      "rotation": {"pitch": 0.0, "yaw": -90.0, "roll": 0.0},
+      "scale": {"uniform": 1.0, "x": 1.0, "y": 1.0, "z": 1.0},
+      "flags": {
+        "hidden": false,
+        "shadowCast": true,
+        "collideActors": false,
+        "blockActors": false,
+        "blockPlayers": false
+      }
+    }
+  ]
+}
+```
+
+Fields:
+- `mesh`: The static mesh asset name
+- `package`: The .usx package file containing the mesh
+- `meshPath`: Full Unreal reference path (Package.Group.Mesh)
+- `location`: World coordinates (Unreal units)
+- `rotation`: Euler angles in degrees (pitch, yaw, roll)
+- `scale`: Uniform scale + per-axis scale factors
+
 ## How It Works
 
 ### Architecture
@@ -164,7 +212,8 @@ io.github.l2terrain/
 │   ├── SplatmapExtractor.java   # Terrain blend maps
 │   ├── DetailMapExtractor.java  # Deco layer textures
 │   ├── TerrainTextureExtractor.java  # Ground textures
-│   └── MetadataExtractor.java   # Two-pass metadata generation
+│   ├── MetadataExtractor.java   # Two-pass metadata generation
+│   └── StaticMeshExtractor.java # Static mesh placements
 ├── cache/
 │   └── TerrainDataCache.java    # Cross-tile texture/mesh mappings
 ├── utils/
@@ -219,7 +268,6 @@ Tiling ground textures referenced by splatmap layers. Extracted from regional pa
 
 ## Future Plans
 
-- Static mesh extraction
 - Water plane detection
 - World coordinate calculation
 
