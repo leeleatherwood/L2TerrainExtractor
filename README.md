@@ -1,8 +1,8 @@
 # L2TerrainExtractor
 
-> **Lineage 2 Terrain Heightmap Extractor**
+> **Lineage 2 Terrain Data Extractor**
 
-Extract G16 heightmap textures from encrypted Lineage 2 `.utx` terrain packages. Features automatic tile detection, XOR decryption for Ver 111/121+ packages, and outputs both PNG and RAW formats for each tile.
+Extract complete terrain data from encrypted Lineage 2 `.utx` and `.unr` packages including heightmaps, splatmaps, detail maps, terrain textures, and metadata. Features automatic tile detection, XOR decryption for Ver 111/121+ packages, and organized output with per-tile metadata.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Java 17+](https://img.shields.io/badge/Java-17+-ED8B00.svg)](https://openjdk.org/)
@@ -12,10 +12,13 @@ Extract G16 heightmap textures from encrypted Lineage 2 `.utx` terrain packages.
 
 ## Features
 
+- **Complete Terrain Extraction** - Heightmaps, splatmaps, detail maps, terrain textures, and metadata
 - **Automatic Decryption** - Handles Lineage 2 Ver 111 and Ver 121+ XOR encryption
-- **Smart Tile Detection** - Automatically finds G16 data using marker pattern detection
-- **Dual Output Formats** - PNG (8-bit normalized) for viewing, RAW (16-bit) for terrain editors
-- **Fast Processing** - Processes 150+ tiles in seconds
+- **Smart Tile Detection** - Automatically finds G16 heightmap data using marker pattern detection
+- **Layer-Preserving Splatmaps** - Exports blend maps with original layer numbering for accurate terrain reconstruction
+- **Cross-Tile Texture Mapping** - Two-pass cache system resolves texture references across map boundaries
+- **Organized Output** - Per-tile directories with JSON metadata linking all extracted assets
+- **Fast Processing** - Extracts 1,700+ assets from 150+ tiles in seconds
 
 ## Requirements
 
@@ -33,57 +36,153 @@ cd L2TerrainExtractor
 
 2. Build the project:
 ```bash
-./gradlew build
+./gradlew fatJar
 ```
 
 This creates a fat JAR at `build/libs/l2terrain-1.0.0-all.jar` with all dependencies included.
 
 ### Basic Usage
 
-Extract heightmaps from a directory of `.utx` terrain files:
+Extract all terrain data from Lineage 2 game files:
 
 ```bash
-java -jar l2terrain-1.0.0-all.jar <input_directory> -o <output_directory>
+java -jar l2terrain-1.0.0-all.jar <textures_dir> -o <output_dir> \
+    --maps=<maps_dir> \
+    --detail-maps=<textures_dir> \
+    --terrain-textures
 ```
-
-Each tile produces two files: `XX_YY_heightmap.png` and `XX_YY_heightmap.raw`
 
 ### Examples
 
-Extract all terrain tiles to a heightmaps folder:
+**Full extraction** (heightmaps, splatmaps, detail maps, terrain textures, metadata):
 ```bash
-java -jar l2terrain-1.0.0-all.jar "C:\L2\textures" -o heightmaps
+java -jar l2terrain-1.0.0-all.jar "C:\L2\textures" -o output \
+    --maps="C:\L2\maps" \
+    --detail-maps="C:\L2\textures" \
+    --terrain-textures -v
 ```
 
-Verbose mode to see each tile extracted:
+**Heightmaps only:**
 ```bash
-java -jar l2terrain-1.0.0-all.jar "C:\L2\textures" -o heightmaps -v
+java -jar l2terrain-1.0.0-all.jar "C:\L2\textures" -o heightmaps --no-splatmaps
+```
+
+**Heightmaps + splatmaps** (default):
+```bash
+java -jar l2terrain-1.0.0-all.jar "C:\L2\textures" -o output
 ```
 
 ## CLI Options
 
 ```
-Usage: l2terrain [-hVv] [-o=<output>] [-p=<pattern>] <inputDir>
+Usage: l2terrain [-hvV] [--all-terrain-textures] [--no-splatmaps]
+                 [--terrain-textures] [--detail-maps=<detailMapsDir>]
+                 [--maps=<mapsDir>] [-o=<outputDir>] [-p=<pattern>] <inputDir>
 
-Extract terrain heightmaps from Lineage 2 packages
+Extract terrain data from Lineage 2 packages (heightmaps, splatmaps, detail maps, metadata)
 
 Parameters:
-      <inputDir>          Input directory containing .utx terrain packages
+      <inputDir>             Input directory containing .utx terrain packages (T_XX_YY.utx)
 
 Options:
-  -o, --output=<output>   Output directory (default: current directory)
-  -p, --pattern=<pattern> File pattern to match (default: t_*_*.utx)
-  -v, --verbose           Verbose output
-  -h, --help              Show this help message and exit.
-  -V, --version           Print version information and exit.
+      --all-terrain-textures Extract ALL terrain textures (not just those in metadata)
+      --detail-maps=<dir>    Directory containing L2DecoLayer*.utx detail map packages
+  -h, --help                 Show this help message and exit
+      --maps=<dir>           Directory containing .unr map files for metadata extraction
+      --no-splatmaps         Skip splatmap extraction
+  -o, --output=<dir>         Output directory (default: current directory)
+  -p, --pattern=<pattern>    File pattern to match (default: t_*_*.utx)
+      --terrain-textures     Extract terrain tiling textures to terraintextures/ folder
+  -v, --verbose              Verbose output
+  -V, --version              Print version information and exit
+```
+
+## Output Structure
+
+```
+output/
+├── heightmaps/              # G16 heightmaps as PNG + RAW
+│   ├── 17_24_heightmap.png
+│   └── 17_24_heightmap.raw
+├── splatmaps/               # Blend maps with layer numbers preserved
+│   ├── 17_24_splatmap0_layer0.png
+│   ├── 17_24_splatmap1_layer2.png   # Note: layer numbers match game data
+│   └── ...
+├── detailmaps/              # Deco layer textures (vegetation placement)
+│   ├── 17_24_detailmap_1.png
+│   ├── 17_24_detailmap_3.png        # Original layer indices preserved
+│   └── ...
+├── terraintextures/         # Ground tiling textures (grass, rock, sand, etc.)
+│   ├── DI_G.png
+│   ├── GI_S.png
+│   └── ...
+└── XX_YY/                   # Per-tile metadata directories
+    └── metadata.json
+```
+
+## Metadata Format
+
+Each tile's `metadata.json` contains:
+
+```json
+{
+  "tile": "17_24",
+  "heightmap": "../heightmaps/17_24_heightmap.png",
+  "splatmaps": [
+    {
+      "file": "../splatmaps/17_24_splatmap0_layer0.png",
+      "layerIndex": 0,
+      "groundTexture": "DI_G"
+    },
+    {
+      "file": "../splatmaps/17_24_splatmap1_layer2.png", 
+      "layerIndex": 2,
+      "groundTexture": "GI_S"
+    }
+  ],
+  "decoLayers": [
+    {
+      "layerIndex": 1,
+      "decoTexture": "17_24_detailmap_1.png",
+      "staticMesh": "LineageDecos.deco_dion_bush01"
+    }
+  ]
+}
 ```
 
 ## How It Works
 
 ### Architecture
 
-- **Extractors** - Handle different data formats (HeightmapExtractor for G16 textures)
-- **Crypto** - Handle package encryption (Ver 111 fixed key, Ver 121+ filename-derived key)
+```
+io.github.l2terrain/
+├── L2TerrainExtractor.java      # Main CLI entry point
+├── crypto/
+│   └── L2Decryptor.java         # Ver 111/121+ XOR decryption
+├── extractors/
+│   ├── HeightmapExtractor.java  # G16 heightmap extraction
+│   ├── SplatmapExtractor.java   # Terrain blend maps
+│   ├── DetailMapExtractor.java  # Deco layer textures
+│   ├── TerrainTextureExtractor.java  # Ground textures
+│   └── MetadataExtractor.java   # Two-pass metadata generation
+├── cache/
+│   └── TerrainDataCache.java    # Cross-tile texture/mesh mappings
+├── utils/
+│   ├── TextureUtils.java        # DXT decompression, format conversion
+│   └── UnrealPackageUtils.java  # Package reader utilities
+└── tools/
+    ├── ImportLister.java        # Debug: list package imports
+    └── ExportLister.java        # Debug: list package exports
+```
+
+### Two-Pass Cache System
+
+Lineage 2 terrain data references textures and meshes across tile boundaries. The `TerrainDataCache` performs a first pass over all `.unr` map files to build global mappings:
+
+1. **DecoTexture → StaticMesh**: Maps deco layer textures to their vegetation meshes
+2. **Splatmap → GroundTexture**: Maps blend maps to their tiling textures
+
+This allows metadata generation to resolve cross-tile references that would otherwise be impossible to determine from a single tile's package.
 
 ### Encryption
 
@@ -91,35 +190,38 @@ Lineage 2 encrypted packages have a 28-byte UTF-16LE header followed by XOR-encr
 
 | Version | Key Derivation |
 |---------|----------------|
-| Ver 111 | Fixed XOR key 0xAC |
-| Ver 121+ | sum(lowercase filename characters) & 0xFF |
+| Ver 111 | Fixed XOR key `0xAC` |
+| Ver 121+ | `sum(lowercase filename characters) & 0xFF` |
 
-### G16 Format
+### Texture Formats
 
-Heightmaps are stored as G16 textures (raw 16-bit grayscale):
-- 256x256 pixels per tile
-- Little-endian unsigned 16-bit values
-- Data follows marker pattern 00 40 80 10
+| Format | Description | Usage |
+|--------|-------------|-------|
+| G16 | 16-bit grayscale | Heightmaps (256×256) |
+| DXT1 | 4-bit compressed RGB | Ground textures |
+| DXT3 | 4-bit RGB + 4-bit alpha | Blend maps |
+| DXT5 | 4-bit RGB + interpolated alpha | Detail maps |
+| P8 | 8-bit paletted | Some older textures |
 
-## Project Structure
+## Terrain Data Types
 
-```
-io.github.l2terrain/
-├── crypto/
-│   └── L2Decryptor.java
-├── extractors/
-│   ├── Extractor.java
-│   └── HeightmapExtractor.java
-├── model/
-│   ├── TerrainTile.java
-│   └── TileCoordinates.java
-└── L2TerrainExtractor.java
-```
+### Heightmaps
+G16 textures containing elevation data. Each tile is 256×256 pixels with 16-bit unsigned values representing terrain height.
+
+### Splatmaps (Blend Maps)
+Alpha maps that control terrain texture blending. Each layer has a corresponding ground texture (grass, rock, sand, etc.). Layer numbering is preserved from the game data for accurate reconstruction.
+
+### Detail Maps (Deco Layers)
+Density maps for vegetation and decoration placement. Each pixel's intensity determines spawn probability for the associated static mesh (trees, bushes, rocks, etc.).
+
+### Terrain Textures
+Tiling ground textures referenced by splatmap layers. Extracted from regional packages (`t_aden.utx`, `t_dion.utx`, etc.).
 
 ## Future Plans
 
-- Splatmap extraction (terrain texture blending)
-- Texture layer extraction
+- Static mesh extraction
+- Water plane detection
+- World coordinate calculation
 
 ## Contributing
 
