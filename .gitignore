@@ -41,3 +41,5 @@ Thumbs.db
 # Project output
 *.raw
 /output
+/output_debug
+/output_test

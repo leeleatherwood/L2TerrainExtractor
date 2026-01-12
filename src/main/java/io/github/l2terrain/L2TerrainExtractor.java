@@ -7,6 +7,7 @@ import io.github.l2terrain.extractors.MetadataExtractor.TileMetadata;
 import io.github.l2terrain.extractors.SplatmapExtractor;
 import io.github.l2terrain.extractors.SplatmapExtractor.SplatmapInfo;
 import io.github.l2terrain.extractors.StaticMeshExtractor;
+import io.github.l2terrain.cache.TerrainDataCache;
 import io.github.l2terrain.extractors.TerrainTextureExtractor;
 import io.github.l2terrain.extractors.TerrainTextureExtractor.TextureInfo;
 import io.github.l2terrain.model.TerrainTile;
@@ -72,6 +73,9 @@ public class L2TerrainExtractor implements Callable<Integer> {
     @Option(names = {"--static-meshes"}, description = "Extract static mesh placements to staticmeshes.json")
     private boolean extractStaticMeshes = false;
     
+    // Shared cache built from map files (if --maps is provided)
+    private TerrainDataCache terrainCache;
+    
     public static void main(String[] args) {
         int exitCode = new CommandLine(new L2TerrainExtractor()).execute(args);
         System.exit(exitCode);
@@ -90,6 +94,14 @@ public class L2TerrainExtractor implements Callable<Integer> {
         
         int totalSuccess = 0;
         int totalFailed = 0;
+        
+        // Build terrain cache FIRST (if maps directory provided)
+        // This is needed for correct splatmap layer ordering
+        if (mapsDir != null && Files.isDirectory(mapsDir)) {
+            System.out.println("=== Building Terrain Cache ===");
+            terrainCache = new TerrainDataCache();
+            terrainCache.buildCache(mapsDir);
+        }
         
         // Extract heightmaps
         System.out.println("=== Extracting Heightmaps ===");
@@ -203,6 +215,16 @@ public class L2TerrainExtractor implements Callable<Integer> {
     
     private int[] extractSplatmaps() throws IOException {
         SplatmapExtractor extractor = new SplatmapExtractor();
+        
+        // Pass the cache to enable correct layer index lookup from TerrainInfo
+        if (terrainCache != null) {
+            extractor.setCache(terrainCache);
+            System.out.println("Using TerrainInfo cache for correct layer ordering");
+        } else {
+            System.out.println("WARNING: No maps directory provided - layer indices may be incorrect!");
+            System.out.println("         Use --maps=<maps_dir> for correct layer ordering.");
+        }
+        
         Map<String, List<SplatmapInfo>> allSplatmaps = extractor.extractAll(inputDir);
         
         int success = 0;
@@ -291,10 +313,14 @@ public class L2TerrainExtractor implements Callable<Integer> {
         
         MetadataExtractor extractor = new MetadataExtractor();
         
-        // Pass 1: Build global cache from all map files
-        extractor.buildCache(mapsDir);
+        // Reuse the cache we already built (or build it now if not yet built)
+        if (terrainCache == null) {
+            terrainCache = new TerrainDataCache();
+            terrainCache.buildCache(mapsDir);
+        }
+        extractor.setCache(terrainCache);
         
-        // Pass 2: Generate metadata for each tile using the cache
+        // Generate metadata for each tile using the cache
         List<TileMetadata> allMetadata = extractor.generateAllMetadata(outputDir);
         
         System.out.printf("Generated metadata for %d tiles%n", allMetadata.size());

@@ -1,5 +1,6 @@
 package io.github.l2terrain.extractors;
 
+import io.github.l2terrain.cache.TerrainDataCache;
 import io.github.l2terrain.crypto.L2Decryptor;
 import io.github.l2terrain.utils.TextureUtils;
 import io.github.l2terrain.utils.UnrealPackageUtils;
@@ -27,6 +28,10 @@ import java.util.regex.Pattern;
  * <p>These textures (named XX_YY_suffix like 23_16_NG1, 23_16_C) control how
  * different terrain textures are blended together on each tile. They are
  * typically DXT1 compressed at 512x512 or 1024x1024.</p>
+ * 
+ * <p>CRITICAL: The layer index is determined by looking up the alpha map texture
+ * name in the TerrainInfo Layers array (via TerrainDataCache), NOT by the order
+ * textures appear in the .utx package file.</p>
  */
 public class SplatmapExtractor {
     
@@ -35,6 +40,9 @@ public class SplatmapExtractor {
     
     /** Pattern to match splatmap texture names: XX_YY_suffix (but not just XX_YY which is heightmap) */
     private static final Pattern SPLATMAP_PATTERN = Pattern.compile("(\\d+)_(\\d+)_([A-Za-z]\\w*)");
+    
+    /** Cache containing TerrainInfo layer order from map files */
+    private TerrainDataCache cache;
     
     /**
      * Information about an extracted splatmap.
@@ -58,6 +66,14 @@ public class SplatmapExtractor {
             this.height = height;
             this.layerIndex = layerIndex;
         }
+    }
+    
+    /**
+     * Set the terrain data cache for layer index lookup.
+     * This MUST be called before extractAll() if you want correct layer ordering.
+     */
+    public void setCache(TerrainDataCache cache) {
+        this.cache = cache;
     }
     
     /**
@@ -86,6 +102,10 @@ public class SplatmapExtractor {
         
         System.out.println("Found " + tilePackages.size() + " tile packages");
         
+        if (cache == null) {
+            System.out.println("WARNING: No TerrainDataCache set - layer indices will be based on export order (may be incorrect!)");
+        }
+        
         int processed = 0;
         for (Path pkg : tilePackages) {
             try {
@@ -112,6 +132,20 @@ public class SplatmapExtractor {
         int tileY = Integer.parseInt(pkgMatcher.group(2));
         String tileName = String.format("%d_%d", tileX, tileY);
         
+        // Get the layer order from the cache (from TerrainInfo)
+        List<String> layerOrder = null;
+        Map<String, Integer> layerIndexMap = null;
+        if (cache != null) {
+            layerOrder = cache.getTileSplatmaps(tileName);
+            if (layerOrder != null && !layerOrder.isEmpty()) {
+                // Build a map from texture name to layer index
+                layerIndexMap = new HashMap<>();
+                for (int i = 0; i < layerOrder.size(); i++) {
+                    layerIndexMap.put(layerOrder.get(i), i);
+                }
+            }
+        }
+        
         // Decrypt to temp file
         Path tempFile = Files.createTempFile("l2tile_", ".utx");
         
@@ -120,7 +154,7 @@ public class SplatmapExtractor {
             
             try (Package pkg = new Package(new PackageReader(tempFile))) {
                 List<SplatmapInfo> splatmaps = new ArrayList<>();
-                int layerIndex = 0;
+                int fallbackLayerIndex = 0;  // Used only if cache lookup fails
                 
                 for (Export export : pkg.exports) {
                     String className = export.classIndex.get().name().name;
@@ -141,6 +175,9 @@ public class SplatmapExtractor {
                     
                     // Verify it's for this tile
                     if (x != tileX || y != tileY) continue;
+                    
+                    // Skip Deco textures (handled separately)
+                    if (suffix.toLowerCase().startsWith("deco")) continue;
                     
                     try {
                         ExportedObject obj = null;
@@ -176,12 +213,25 @@ public class SplatmapExtractor {
                             continue;
                         }
                         
+                        // Look up the correct layer index from the cache
+                        int layerIndex;
+                        if (layerIndexMap != null && layerIndexMap.containsKey(texName)) {
+                            layerIndex = layerIndexMap.get(texName);
+                        } else {
+                            // Fallback: use export order (old behavior, may be wrong)
+                            layerIndex = fallbackLayerIndex++;
+                            System.out.printf("    WARNING: %s not found in TerrainInfo, using fallback index %d%n", 
+                                texName, layerIndex);
+                        }
+                        
                         // Create output filename: XX_YY_splatmapN_layerN.png
                         String fileName = String.format("%d_%d_splatmap%d_layer%d.png", 
                             tileX, tileY, layerIndex, layerIndex);
                         
+                        System.out.printf("  Extracted: %s -> layer %d (from %s)%n", 
+                            texName, layerIndex, layerIndexMap != null ? "TerrainInfo" : "fallback");
+                        
                         splatmaps.add(new SplatmapInfo(fileName, texName, suffix, image, width, height, layerIndex));
-                        layerIndex++;
                         
                     } catch (Exception e) {
                         System.out.println("\n    Error extracting " + texName + ": " + e.getMessage());

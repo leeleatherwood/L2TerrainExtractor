@@ -270,6 +270,14 @@ public class StaticMeshExtractor {
                         info.blockPlayers = boolProp.value;
                     }
                     break;
+                    
+                case "PrePivot":
+                    if (prop instanceof StructProperty.VectorProperty vec) {
+                        info.prePivotX = vec.x;
+                        info.prePivotY = vec.y;
+                        info.prePivotZ = vec.z;
+                    }
+                    break;
             }
         }
         
@@ -304,6 +312,16 @@ public class StaticMeshExtractor {
                 out.printf("        \"y\": %.4f,%n", mesh.locationY);
                 out.printf("        \"z\": %.4f%n", mesh.locationZ);
                 out.println("      },");
+                
+                // PrePivot (only output if non-zero)
+                if (mesh.prePivotX != 0 || mesh.prePivotY != 0 || mesh.prePivotZ != 0) {
+                    out.println("      \"prePivot\": {");
+                    out.printf("        \"x\": %.4f,%n", mesh.prePivotX);
+                    out.printf("        \"y\": %.4f,%n", mesh.prePivotY);
+                    out.printf("        \"z\": %.4f%n", mesh.prePivotZ);
+                    out.println("      },");
+                }
+                
                 out.println("      \"rotation\": {");
                 out.printf("        \"pitch\": %.4f,%n", mesh.rotationPitch);
                 out.printf("        \"yaw\": %.4f,%n", mesh.rotationYaw);
@@ -357,6 +375,11 @@ public class StaticMeshExtractor {
         public float locationX = 0;
         public float locationY = 0;
         public float locationZ = 0;
+        
+        // PrePivot (offset from origin)
+        public float prePivotX = 0;
+        public float prePivotY = 0;
+        public float prePivotZ = 0;
         
         // Rotation (degrees)
         public double rotationPitch = 0;

@@ -3,6 +3,7 @@ package io.github.l2terrain.extractors;
 import io.github.l2terrain.cache.TerrainDataCache;
 import io.github.l2terrain.cache.TerrainDataCache.DecoLayerInfo;
 import io.github.l2terrain.cache.TerrainDataCache.SplatmapInfo;
+import io.github.l2terrain.cache.TerrainDataCache.TerrainLocation;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -96,6 +97,15 @@ public class MetadataExtractor {
         
         TileMetadata meta = new TileMetadata(tileX, tileY);
         
+        // Get terrain location from cache
+        String tileKey = tileX + "_" + tileY;
+        TerrainLocation loc = cache.getTileLocation(tileKey);
+        if (loc != null) {
+            meta.locationX = loc.x;
+            meta.locationY = loc.y;
+            meta.locationZ = loc.z;
+        }
+        
         // Find all detailmap files and look up their associations from the global cache
         try (var stream = Files.list(tileDir)) {
             stream.filter(p -> p.getFileName().toString().contains("_detailmap_"))
@@ -136,8 +146,8 @@ public class MetadataExtractor {
                         int splatIndex = Integer.parseInt(m.group(3));
                         
                         // Look up splatmaps for this tile from cache
-                        String tileKey = splatX + "_" + splatY;
-                        List<String> tileSplatmaps = cache.getTileSplatmaps(tileKey);
+                        String splatTileKey = splatX + "_" + splatY;
+                        List<String> tileSplatmaps = cache.getTileSplatmaps(splatTileKey);
                         
                         TileSplatmapInfo layer = new TileSplatmapInfo(splatIndex);
                         
@@ -198,6 +208,12 @@ public class MetadataExtractor {
             writer.printf("tile_y=%d%n", meta.tileY);
             writer.println();
             
+            writer.println("# Terrain world location (L2 coordinates)");
+            writer.printf("location_x=%.4f%n", meta.locationX);
+            writer.printf("location_y=%.4f%n", meta.locationY);
+            writer.printf("location_z=%.4f%n", meta.locationZ);
+            writer.println();
+            
             writer.println("# Splatmaps (terrain blend layers)");
             writer.println("# Format: splatmap_N=filename,ground_texture_name");
             for (TileSplatmapInfo layer : meta.splatmapLayers) {
@@ -238,6 +254,9 @@ public class MetadataExtractor {
     public static class TileMetadata {
         public int tileX;
         public int tileY;
+        public float locationX;
+        public float locationY;
+        public float locationZ;
         public List<TileSplatmapInfo> splatmapLayers = new ArrayList<>();
         public List<TileDecoLayerInfo> decoLayers = new ArrayList<>();
         
